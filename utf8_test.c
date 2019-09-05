@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 
+////////////////////////////////////////////////////////////////////////
+// 我的版本，简单的if else
 int utf8_len(const uint8_t *s) {
     int len = 0;
     while (1) {
@@ -30,7 +32,7 @@ int utf8_len(const uint8_t *s) {
     return len;
 }
 
-const char* utf8_decode(const uint8_t *s, int *code) {
+const char* my_decode(const uint8_t *s, int *code) {
     int ret;
     uint8_t c = *s++;
     if (c == '\0') return NULL;
@@ -61,6 +63,18 @@ const char* utf8_decode(const uint8_t *s, int *code) {
     return s;
 }
 
+void my_utf8_decode(const uint8_t *str) {
+    int code;
+    const char *p = str;
+    while (p = my_decode(p, &code)) {
+        // printf("U+%04X\n", code);
+    } 
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+// 号称很快的版本
+
 #define UTF8_ACCEPT 0
 #define UTF8_REJECT 1
 
@@ -81,8 +95,7 @@ static const uint8_t utf8d[] = {
   1,3,1,1,1,1,1,3,1,3,1,1,1,1,1,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // s7..s8
 };
 
-uint32_t inline
-decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
+uint32_t inline decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
   uint32_t type = utf8d[byte];
 
   *codep = (*state != UTF8_ACCEPT) ?
@@ -93,66 +106,20 @@ decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
   return *state;
 }
 
-const char* utf8_decode2(const uint8_t *s, int *code) {
-    uint32_t codepoint;
-    uint32_t state = 0;
-    uint32_t ch;
+void utf8_decode(const uint8_t* s) {
+  uint32_t codepoint;
+  uint32_t state = 0;
 
-    while (*s) {
-        ch = *s++;
-        if (!decode(&state, &codepoint, ch)) {
-            if (state == UTF8_ACCEPT) {
-                *code = codepoint;
-                return s;
-            }
-            return NULL;
-        }
-    }
-    return NULL;
+  for (; *s; ++s)
+    if (!decode(&state, &codepoint, *s))
+    //   printf("U+%04X\n", codepoint);
+
+  if (state != UTF8_ACCEPT)
+    printf("The string is not well-formed\n");
+
 }
 
-static unsigned char*
-utf8_decode3(unsigned char *buf, uint32_t *c, int *e)
-{
-    static const char lengths[] = {
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 3, 3, 4, 0
-    };
-    static const int masks[]  = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
-    static const uint32_t mins[] = {4194304, 0, 128, 2048, 65536};
-    static const int shiftc[] = {0, 18, 12, 6, 0};
-    static const int shifte[] = {0, 6, 4, 2, 0};
-
-    unsigned char *s = buf;
-    int len = lengths[s[0] >> 3];
-
-    /* Compute the pointer to the next character early so that the next
-     * iteration can start working on the next character. Neither Clang
-     * nor GCC figure out this reordering on their own.
-     */
-    unsigned char *next = s + len + !len;
-
-    /* Assume a four-byte character and load four bytes. Unused bits are
-     * shifted out.
-     */
-    *c  = (uint32_t)(s[0] & masks[len]) << 18;
-    *c |= (uint32_t)(s[1] & 0x3f) << 12;
-    *c |= (uint32_t)(s[2] & 0x3f) <<  6;
-    *c |= (uint32_t)(s[3] & 0x3f) <<  0;
-    *c >>= shiftc[len];
-
-    /* Accumulate the various error conditions. */
-    *e  = (*c < mins[len]) << 6; // non-canonical encoding
-    *e |= ((*c >> 11) == 0x1b) << 7;  // surrogate half?
-    *e |= (*c > 0x10FFFF) << 8;  // out of range?
-    *e |= (s[1] & 0xc0) >> 2;
-    *e |= (s[2] & 0xc0) >> 4;
-    *e |= (s[3]       ) >> 6;
-    *e ^= 0x2a; // top two bits of each tail byte correct?
-    *e >>= shifte[len];
-
-    return next;
-}
+///////////////////////////////////////////////////////////////////////
 
 int main(int argc, char const *argv[])
 {
@@ -273,13 +240,9 @@ int main(int argc, char const *argv[])
     int i;
     clock_t t = clock();
     for (i = 0; i < 10000; ++i) {
-        int code;
-        const char *p = str;
-        while (p = utf8_decode2(p, &code)) {
-            // printf("\\U+%04X ", code);
-        } 
+        my_utf8_decode(str);
+        // utf8_decode(str);
     }
-    // printf("\n");
     double tm = (double)(clock() - t) / CLOCKS_PER_SEC;
     printf("time=%f\n", tm);
     return 0;
